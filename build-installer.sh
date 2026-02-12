@@ -227,6 +227,7 @@ echo "    Removed app and source files"
 # Remove updater files
 rm -f "$HOME/.local/sic-versions"
 rm -f "$HOME/.local/.sic-updater.lock"
+rm -f "$HOME/.local/.sic-github-token"
 rm -rf "$HOME/.local/sic-backup"
 echo "    Removed updater data"
 

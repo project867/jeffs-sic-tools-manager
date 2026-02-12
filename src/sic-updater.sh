@@ -9,15 +9,22 @@
 set -euo pipefail
 
 # --- Config ---
-GITHUB_REPO="OWNER/REPO"  # TODO: set to actual repo
+GITHUB_REPO="project867/jeffs-sic-tools-manager"
 VERSIONS_FILE="$HOME/.local/sic-versions"
 BACKUP_DIR="$HOME/.local/sic-backup"
 BIN_DIR="$HOME/.local/bin"
 TOOLS_DIR="$HOME/.local/tools"
 LOG_FILE="$HOME/Library/Logs/sic-updater.log"
 LOCK_FILE="$HOME/.local/.sic-updater.lock"
+TOKEN_FILE="$HOME/.local/.sic-github-token"
 GITHUB_API="https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=50"
 MAX_LOG_SIZE=1048576  # 1MB
+
+# --- Auth (for private repos) ---
+AUTH_HEADER=""
+if [ -f "$TOKEN_FILE" ]; then
+    AUTH_HEADER="Authorization: Bearer $(cat "$TOKEN_FILE" | tr -d '[:space:]')"
+fi
 
 # --- Logging ---
 log() {
@@ -101,9 +108,11 @@ set_installed_version() {
 # --- Fetch releases from GitHub (single API call) ---
 fetch_releases() {
     local response
-    response=$(curl -s --max-time 30 \
-        -H "Accept: application/vnd.github+json" \
-        "$GITHUB_API" 2>/dev/null) || {
+    local curl_args=(-s --max-time 30 -H "Accept: application/vnd.github+json")
+    if [ -n "$AUTH_HEADER" ]; then
+        curl_args+=(-H "$AUTH_HEADER")
+    fi
+    response=$(curl "${curl_args[@]}" "$GITHUB_API" 2>/dev/null) || {
         log "ERROR: Failed to fetch releases from GitHub"
         return 1
     }
@@ -142,8 +151,12 @@ get_asset_urls() {
 download_asset() {
     local url="$1"
     local dest="$2"
+    local curl_args=(-sL --max-time 60 -o "$dest")
+    if [ -n "$AUTH_HEADER" ]; then
+        curl_args+=(-H "$AUTH_HEADER" -H "Accept: application/octet-stream")
+    fi
 
-    curl -sL --max-time 60 -o "$dest" "$url" 2>/dev/null || {
+    curl "${curl_args[@]}" "$url" 2>/dev/null || {
         log "ERROR: Failed to download $url"
         return 1
     }
