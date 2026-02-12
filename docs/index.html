@@ -18,19 +18,6 @@
         padding: 60px 20px 40px;
     }
 
-    @media (prefers-color-scheme: dark) {
-        body { background: #1c1c1e; color: #f5f5f7; }
-        .card { background: #2c2c2e; }
-        .card h2 { color: #f5f5f7; }
-        .tool { background: #3a3a3c; }
-        .tool strong { color: #f5f5f7; }
-        .tool span { color: #a1a1a6; }
-        .note { background: #3a3a3c; color: #a1a1a6; }
-        .note strong { color: #f5f5f7; }
-        code { background: #48484a; color: #e5e5ea; }
-        .footer { color: #86868b; }
-    }
-
     .hero {
         text-align: center;
         max-width: 600px;
@@ -46,7 +33,7 @@
 
     .hero p {
         font-size: 18px;
-        color: #86868b;
+        color: #6e6e73;
         line-height: 1.5;
     }
 
@@ -92,6 +79,7 @@
         font-size: 20px;
         font-weight: 600;
         margin-bottom: 16px;
+        color: #1d1d1f;
     }
 
     .tools-list {
@@ -111,11 +99,12 @@
         display: block;
         font-size: 15px;
         margin-bottom: 2px;
+        color: #1d1d1f;
     }
 
     .tool span {
         font-size: 13px;
-        color: #86868b;
+        color: #6e6e73;
     }
 
     .note {
@@ -124,10 +113,12 @@
         padding: 16px 18px;
         font-size: 13px;
         line-height: 1.6;
-        color: #86868b;
+        color: #6e6e73;
     }
 
-    .note strong { color: inherit; }
+    .note strong {
+        color: #1d1d1f;
+    }
 
     code {
         background: #e8e8ed;
@@ -142,6 +133,21 @@
         font-size: 12px;
         color: #afafb2;
         text-align: center;
+    }
+
+    /* --- Dark mode --- */
+    @media (prefers-color-scheme: dark) {
+        body { background: #000; color: #fff; }
+        .hero p { color: #98989f; }
+        .card { background: #1c1c1e; }
+        .card h2 { color: #fff; }
+        .tool { background: #2c2c2e; }
+        .tool strong { color: #fff; }
+        .tool span { color: #98989f; }
+        .note { background: #2c2c2e; color: #98989f; }
+        .note strong { color: #fff; }
+        code { background: #3a3a3c; color: #fff; }
+        .footer { color: #636366; }
     }
 </style>
 </head>
@@ -206,7 +212,6 @@
     fetch(api)
         .then(function(r) { return r.json(); })
         .then(function(releases) {
-            // Find latest installer release
             var installer = null;
             for (var i = 0; i < releases.length; i++) {
                 if (releases[i].tag_name && releases[i].tag_name.indexOf('installer-v') === 0) {
@@ -222,7 +227,6 @@
                 return;
             }
 
-            // Find the .pkg asset
             var pkg = null;
             var assets = installer.assets || [];
             for (var j = 0; j < assets.length; j++) {
