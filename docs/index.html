@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jeff's Sic Tools Manager</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+        background: #f5f5f7;
+        color: #1d1d1f;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 60px 20px 40px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        body { background: #1c1c1e; color: #f5f5f7; }
+        .card { background: #2c2c2e; }
+        .tool { background: #3a3a3c; }
+        .note { background: #3a3a3c; }
+        code { background: #3a3a3c; }
+        .footer { color: #86868b; }
+    }
+
+    .hero {
+        text-align: center;
+        max-width: 600px;
+        margin-bottom: 40px;
+    }
+
+    .hero h1 {
+        font-size: 36px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        margin-bottom: 12px;
+    }
+
+    .hero p {
+        font-size: 18px;
+        color: #86868b;
+        line-height: 1.5;
+    }
+
+    .download-btn {
+        display: inline-block;
+        margin-top: 28px;
+        padding: 16px 40px;
+        font-size: 18px;
+        font-weight: 600;
+        color: #fff;
+        background: #0071e3;
+        border: none;
+        border-radius: 12px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.2s;
+    }
+    .download-btn:hover { background: #0077ed; }
+    .download-btn:active { background: #0068d6; }
+
+    .download-btn.loading {
+        background: #86868b;
+        cursor: wait;
+    }
+
+    .version-tag {
+        display: block;
+        margin-top: 10px;
+        font-size: 13px;
+        color: #86868b;
+    }
+
+    .card {
+        background: #fff;
+        border-radius: 16px;
+        padding: 32px;
+        max-width: 600px;
+        width: 100%;
+        margin-bottom: 20px;
+    }
+
+    .card h2 {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 16px;
+    }
+
+    .tools-list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .tool {
+        background: #f5f5f7;
+        border-radius: 10px;
+        padding: 14px 18px;
+    }
+
+    .tool strong {
+        display: block;
+        font-size: 15px;
+        margin-bottom: 2px;
+    }
+
+    .tool span {
+        font-size: 13px;
+        color: #86868b;
+    }
+
+    .note {
+        background: #f5f5f7;
+        border-radius: 10px;
+        padding: 16px 18px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #86868b;
+    }
+
+    .note strong { color: inherit; }
+
+    code {
+        background: #e8e8ed;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: "SF Mono", Menlo, monospace;
+    }
+
+    .footer {
+        margin-top: 20px;
+        font-size: 12px;
+        color: #afafb2;
+        text-align: center;
+    }
+</style>
+</head>
+<body>
+
+<div class="hero">
+    <h1>Jeff's Sic Tools Manager</h1>
+    <p>A lightweight macOS menu bar app for managing custom background tools and services.</p>
+    <a id="download-btn" class="download-btn loading" href="https://github.com/project867/jeffs-sic-tools-manager/releases" target="_blank">
+        Loading...
+    </a>
+    <span id="version-tag" class="version-tag"></span>
+</div>
+
+<div class="card">
+    <h2>What's Included</h2>
+    <ul class="tools-list">
+        <li class="tool">
+            <strong>Core (required)</strong>
+            <span>Menu bar control panel and bash TUI for managing all your tools.</span>
+        </li>
+        <li class="tool">
+            <strong>Screen-shot Manager</strong>
+            <span>Auto-opens your Screenshots folder in Finder when you take a screenshot.</span>
+        </li>
+        <li class="tool">
+            <strong>Cat-On-Keyboard Detector</strong>
+            <span>Alerts you when a cat is walking across your keyboard. (Demo)</span>
+        </li>
+        <li class="tool">
+            <strong>Coffee Refiller 3000</strong>
+            <span>Detects empty mugs and summons fresh coffee. (Demo)</span>
+        </li>
+        <li class="tool">
+            <strong>Snack Scheduler</strong>
+            <span>Reminds you to take a snack break every 47 minutes. (Demo)</span>
+        </li>
+    </ul>
+</div>
+
+<div class="card">
+    <h2>How It Works</h2>
+    <div class="note">
+        <strong>Install:</strong> Download and open the <code>.pkg</code> file. Select which tools to install on the customization screen. Core is always included.<br><br>
+        <strong>Upgrade:</strong> Download the latest <code>.pkg</code> and install again. It detects and upgrades your existing installation automatically. Tools also auto-update in the background every 6 hours.<br><br>
+        <strong>Uninstall:</strong> Run <code>bash ~/.local/bin/uninstall-tool-manager.sh</code><br><br>
+        <strong>Requires:</strong> macOS 13+ (Ventura or later). Screen-shot Manager requires <code>fswatch</code> &mdash; install with <code>brew install fswatch</code>.
+    </div>
+</div>
+
+<div class="footer">
+    Made by Jeff
+</div>
+
+<script>
+(function() {
+    var btn = document.getElementById('download-btn');
+    var tag = document.getElementById('version-tag');
+    var api = 'https://api.github.com/repos/project867/jeffs-sic-tools-manager/releases';
+    var fallback = 'https://github.com/project867/jeffs-sic-tools-manager/releases';
+
+    fetch(api)
+        .then(function(r) { return r.json(); })
+        .then(function(releases) {
+            // Find latest installer release
+            var installer = null;
+            for (var i = 0; i < releases.length; i++) {
+                if (releases[i].tag_name && releases[i].tag_name.indexOf('installer-v') === 0) {
+                    installer = releases[i];
+                    break;
+                }
+            }
+            if (!installer) {
+                btn.textContent = 'Download';
+                btn.href = fallback;
+                btn.classList.remove('loading');
+                tag.textContent = 'Visit releases page';
+                return;
+            }
+
+            // Find the .pkg asset
+            var pkg = null;
+            var assets = installer.assets || [];
+            for (var j = 0; j < assets.length; j++) {
+                if (assets[j].name && assets[j].name.indexOf('.pkg') !== -1) {
+                    pkg = assets[j];
+                    break;
+                }
+            }
+
+            var version = installer.tag_name.replace('installer-v', '');
+
+            if (pkg) {
+                btn.href = pkg.browser_download_url;
+                btn.textContent = 'Download for macOS';
+                btn.classList.remove('loading');
+                tag.textContent = 'v' + version + ' \u00B7 ' + formatSize(pkg.size);
+            } else {
+                btn.href = installer.html_url;
+                btn.textContent = 'Download v' + version;
+                btn.classList.remove('loading');
+                tag.textContent = 'View release page';
+            }
+        })
+        .catch(function() {
+            btn.textContent = 'Download';
+            btn.href = fallback;
+            btn.classList.remove('loading');
+            tag.textContent = 'Visit releases page';
+        });
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+})();
+</script>
+
+</body>
+</html>

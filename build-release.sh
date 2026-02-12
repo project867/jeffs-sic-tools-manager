@@ -6,6 +6,7 @@
 #  Components:
 #    core                    — menu bar app, TUI, updater
 #    tool-screenshot-watcher — screenshot watcher tool
+#    installer               — full .pkg installer for download page
 #
 #  Output: ./release-output/<tag>/
 # ============================================
@@ -20,6 +21,7 @@ if [ $# -lt 1 ]; then
     echo "Components:"
     echo "  core                    — Core manager (v$VERSION)"
     echo "  tool-screenshot-watcher — Screenshot watcher (v$VERSION)"
+    echo "  installer               — Full .pkg installer (v$VERSION)"
     exit 1
 fi
 
@@ -103,9 +105,37 @@ case "$COMPONENT" in
         echo ""
         ;;
 
+    installer)
+        echo "==> Building installer .pkg (v$VERSION)..."
+
+        # Run the installer build script
+        bash "$SCRIPT_DIR/build-installer.sh"
+
+        PKG_FILE="$HOME/Desktop/Jeff's Sic Tools Manager.pkg"
+        if [ ! -f "$PKG_FILE" ]; then
+            echo "ERROR: build-installer.sh did not produce $PKG_FILE"
+            exit 1
+        fi
+
+        cp "$PKG_FILE" "$OUTPUT_DIR/Jeffs-Sic-Tools-Manager-v${VERSION}.pkg"
+
+        # Generate manifest with checksums
+        generate_manifest "$OUTPUT_DIR"
+
+        echo ""
+        echo "============================================"
+        echo "  Installer release assets built: $TAG"
+        echo "  Output: $OUTPUT_DIR/"
+        echo "============================================"
+        echo ""
+        echo "  To create the GitHub Release:"
+        echo "    gh release create $TAG $OUTPUT_DIR/* --title \"Installer v$VERSION\" --notes \"Jeff's Sic Tools Manager v$VERSION installer\""
+        echo ""
+        ;;
+
     *)
         echo "ERROR: Unknown component '$COMPONENT'"
-        echo "Valid components: core, tool-screenshot-watcher"
+        echo "Valid components: core, tool-screenshot-watcher, installer"
         exit 1
         ;;
 esac
