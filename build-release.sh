@@ -7,6 +7,7 @@
 #    core                    — menu bar app, TUI, updater
 #    tool-screenshot-watcher — screenshot watcher tool
 #    installer               — full .pkg installer for download page
+#    release                 — core + installer together (keeps versions in sync)
 #
 #  Output: ./release-output/<tag>/
 # ============================================
@@ -22,6 +23,7 @@ if [ $# -lt 1 ]; then
     echo "  core                    — Core manager (v$VERSION)"
     echo "  tool-screenshot-watcher — Screenshot watcher (v$VERSION)"
     echo "  installer               — Full .pkg installer (v$VERSION)"
+    echo "  release                 — Core + installer together (v$VERSION)"
     exit 1
 fi
 
@@ -88,6 +90,21 @@ case "$COMPONENT" in
     tool-screenshot-watcher)
         echo "==> Building screenshot-watcher release assets (v$VERSION)..."
 
+        # Compile sic-watcher universal binary
+        echo "==> Compiling sic-watcher binary..."
+        WATCHER_C_SRC="$SCRIPT_DIR/src/sic-watcher.c"
+        BUILDDIR_W=$(mktemp -d)
+
+        cc "$WATCHER_C_SRC" -o "$BUILDDIR_W/sic-watcher_arm64" -O2 \
+            -target arm64-apple-macosx13.0 2>/dev/null
+        cc "$WATCHER_C_SRC" -o "$BUILDDIR_W/sic-watcher_x86_64" -O2 \
+            -target x86_64-apple-macosx13.0 2>/dev/null
+        lipo -create "$BUILDDIR_W/sic-watcher_arm64" "$BUILDDIR_W/sic-watcher_x86_64" \
+            -output "$OUTPUT_DIR/sic-watcher"
+        chmod +x "$OUTPUT_DIR/sic-watcher"
+        rm -rf "$BUILDDIR_W"
+        echo "    Universal binary built ($(du -h "$OUTPUT_DIR/sic-watcher" | cut -f1 | xargs))"
+
         cp "$SCRIPT_DIR/src/screenshot-watcher.sh" "$OUTPUT_DIR/"
         cp "$SCRIPT_DIR/tools/screenshot-watcher.tool" "$OUTPUT_DIR/"
 
@@ -133,9 +150,25 @@ case "$COMPONENT" in
         echo ""
         ;;
 
+    release)
+        echo "==> Building core + installer release (v$VERSION)..."
+        echo ""
+        bash "$SCRIPT_DIR/build-release.sh" core
+        bash "$SCRIPT_DIR/build-release.sh" installer
+        echo ""
+        echo "============================================"
+        echo "  Both releases built. To publish:"
+        echo ""
+        echo "  gh release create core-v$VERSION $SCRIPT_DIR/release-output/core-v$VERSION/* --title \"Core v$VERSION\" --notes \"Core update to v$VERSION\""
+        echo ""
+        echo "  gh release create installer-v$VERSION $SCRIPT_DIR/release-output/installer-v$VERSION/* --title \"Installer v$VERSION\" --notes \"Jeff's Sic Tools Manager v$VERSION installer\""
+        echo "============================================"
+        echo ""
+        ;;
+
     *)
         echo "ERROR: Unknown component '$COMPONENT'"
-        echo "Valid components: core, tool-screenshot-watcher, installer"
+        echo "Valid components: core, tool-screenshot-watcher, installer, release"
         exit 1
         ;;
 esac

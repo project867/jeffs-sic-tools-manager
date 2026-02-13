@@ -9,6 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION=$(cat "$SCRIPT_DIR/VERSION" | tr -d '[:space:]')
 IDENTIFIER_BASE="com.custom-tools"
+UPDATER_INTERVAL=120          # seconds between update checks (120=2min, 21600=6hrs)
 OUTPUT="$HOME/Desktop/Jeff's Sic Tools Manager.pkg"
 BUILDDIR=$(mktemp -d)
 
@@ -24,6 +25,7 @@ SOURCES=(
     "$SCRIPT_DIR/src/tool-manager.sh"
     "$SCRIPT_DIR/src/screenshot-watcher.sh"
     "$SCRIPT_DIR/src/sic-updater.sh"
+    "$SCRIPT_DIR/src/sic-watcher.c"
     "$SCRIPT_DIR/resources/Info.plist"
 )
 for src in "${SOURCES[@]}"; do
@@ -58,6 +60,22 @@ lipo -create "$BIN_ARM64" "$BIN_X86" -output "$BIN_UNIVERSAL"
 
 echo "    Universal binary built ($(du -h "$BIN_UNIVERSAL" | cut -f1 | xargs))."
 
+# --- 2b. Compile sic-watcher binary (universal: arm64 + x86_64) ---
+echo "==> Compiling sic-watcher binary..."
+
+WATCHER_C_SRC="$SCRIPT_DIR/src/sic-watcher.c"
+WATCHER_ARM64="$BUILDDIR/sic-watcher_arm64"
+WATCHER_X86="$BUILDDIR/sic-watcher_x86_64"
+WATCHER_UNIVERSAL="$BUILDDIR/sic-watcher"
+
+cc "$WATCHER_C_SRC" -o "$WATCHER_ARM64" -O2 \
+    -target arm64-apple-macosx13.0 2>/dev/null
+cc "$WATCHER_C_SRC" -o "$WATCHER_X86" -O2 \
+    -target x86_64-apple-macosx13.0 2>/dev/null
+lipo -create "$WATCHER_ARM64" "$WATCHER_X86" -output "$WATCHER_UNIVERSAL"
+
+echo "    Universal binary built ($(du -h "$WATCHER_UNIVERSAL" | cut -f1 | xargs))."
+
 # --- 3. Base64-encode files ---
 echo "==> Encoding files..."
 
@@ -67,6 +85,7 @@ BASH_B64=$(base64 < "$SCRIPT_DIR/src/tool-manager.sh")
 WATCHER_B64=$(base64 < "$SCRIPT_DIR/src/screenshot-watcher.sh")
 PLIST_B64=$(base64 < "$SCRIPT_DIR/resources/Info.plist")
 UPDATER_B64=$(base64 < "$SCRIPT_DIR/src/sic-updater.sh")
+WATCHER_BIN_B64=$(base64 < "$WATCHER_UNIVERSAL")
 
 echo "    Done."
 
@@ -222,6 +241,7 @@ rm -rf "$HOME/.local/bin/ToolManager.app"
 rm -f "$HOME/.local/bin/ToolManagerSource.swift"
 rm -f "$HOME/.local/bin/tool-manager.sh"
 rm -f "$HOME/.local/bin/sic-updater.sh"
+rm -f "$HOME/.local/bin/sic-watcher"
 echo "    Removed app and source files"
 
 # Remove updater files
@@ -272,7 +292,7 @@ chown "\$REAL_USER" "\$REAL_HOME/.local/sic-versions"
 
 CORE_VERSIONS
 
-cat >> "$BUILDDIR/core-scripts/postinstall" << 'CORE_FOOTER'
+cat >> "$BUILDDIR/core-scripts/postinstall" << 'CORE_LAUNCHAGENTS'
 # Write LaunchAgent plist for manager
 PLIST_PATH="$REAL_HOME/Library/LaunchAgents/com.custom-tools.manager.plist"
 cat > "$PLIST_PATH" << PLIST
@@ -295,9 +315,13 @@ cat > "$PLIST_PATH" << PLIST
 </plist>
 PLIST
 
+CORE_LAUNCHAGENTS
+
+# Updater plist — unquoted heredoc so $UPDATER_INTERVAL expands at build time
+cat >> "$BUILDDIR/core-scripts/postinstall" << CORE_UPDATER_PLIST
 # Write LaunchAgent plist for auto-updater
-UPDATER_PLIST_PATH="$REAL_HOME/Library/LaunchAgents/com.custom-tools.updater.plist"
-cat > "$UPDATER_PLIST_PATH" << UPDPLIST
+UPDATER_PLIST_PATH="\$REAL_HOME/Library/LaunchAgents/com.custom-tools.updater.plist"
+cat > "\$UPDATER_PLIST_PATH" << UPDPLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -308,20 +332,23 @@ cat > "$UPDATER_PLIST_PATH" << UPDPLIST
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>$REAL_HOME/.local/bin/sic-updater.sh</string>
+        <string>\$REAL_HOME/.local/bin/sic-updater.sh</string>
     </array>
     <key>StartInterval</key>
-    <integer>21600</integer>
+    <integer>$UPDATER_INTERVAL</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>$REAL_HOME/Library/Logs/sic-updater.log</string>
+    <string>\$REAL_HOME/Library/Logs/sic-updater.log</string>
     <key>StandardErrorPath</key>
-    <string>$REAL_HOME/Library/Logs/sic-updater.log</string>
+    <string>\$REAL_HOME/Library/Logs/sic-updater.log</string>
 </dict>
 </plist>
 UPDPLIST
 
+CORE_UPDATER_PLIST
+
+cat >> "$BUILDDIR/core-scripts/postinstall" << 'CORE_FOOTER'
 # Fix ownership
 chown -R "$REAL_USER" "$REAL_HOME/.local"
 chown "$REAL_USER" "$PLIST_PATH"
@@ -372,16 +399,11 @@ cat >> "$BUILDDIR/watcher-scripts/postinstall" << WATCHER_DATA
 echo '$WATCHER_B64' | base64 -d > "\$REAL_HOME/.local/bin/screenshot-watcher.sh"
 chmod +x "\$REAL_HOME/.local/bin/screenshot-watcher.sh"
 
+# Decode sic-watcher binary (native directory watcher)
+echo '$WATCHER_BIN_B64' | base64 -d > "\$REAL_HOME/.local/bin/sic-watcher"
+chmod +x "\$REAL_HOME/.local/bin/sic-watcher"
+
 WATCHER_DATA
-
-cat >> "$BUILDDIR/watcher-scripts/postinstall" << 'WATCHER_FSWATCH'
-# Check for fswatch dependency
-if ! command -v /opt/homebrew/bin/fswatch &>/dev/null && ! command -v fswatch &>/dev/null; then
-    echo "WARNING: fswatch not found. Screenshot Watcher requires fswatch to run."
-    echo "Install it with: brew install fswatch"
-fi
-
-WATCHER_FSWATCH
 
 # Write manifest with build-time VERSION expansion
 cat >> "$BUILDDIR/watcher-scripts/postinstall" << WATCHER_MANIFEST
@@ -391,6 +413,7 @@ NAME=Screen-shot Manager
 DESCRIPTION=Auto-opens Screenshots folder when you take a screenshot
 LABEL=com.screenshot-watcher
 SCRIPT=\$HOME/.local/bin/screenshot-watcher.sh
+BINARY=\$HOME/.local/bin/sic-watcher
 PLIST=\$HOME/Library/LaunchAgents/com.screenshot-watcher.plist
 VERSION=$VERSION
 UPDATE_TAG=tool-screenshot-watcher
@@ -510,7 +533,7 @@ echo "    Component packages built."
 # --- 8. Write distribution XML ---
 echo "==> Writing distribution XML..."
 
-cat > "$BUILDDIR/distribution.xml" << 'DISTXML'
+cat > "$BUILDDIR/distribution.xml" << DISTXML
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>Jeff's Sic Tools Manager</title>
@@ -535,7 +558,7 @@ cat > "$BUILDDIR/distribution.xml" << 'DISTXML'
 
     <choice id="screenshot-watcher"
             title="Screen-shot Manager"
-            description="Auto-opens your Screenshots folder in Finder when you take a screenshot. Requires fswatch (brew install fswatch)."
+            description="Auto-opens your Screenshots folder in Finder when you take a screenshot."
             selected="true">
         <pkg-ref id="com.custom-tools.screenshot-watcher" />
     </choice>
@@ -561,11 +584,11 @@ cat > "$BUILDDIR/distribution.xml" << 'DISTXML'
         <pkg-ref id="com.custom-tools.snack-scheduler" />
     </choice>
 
-    <pkg-ref id="com.custom-tools.core" version="1.0">core.pkg</pkg-ref>
-    <pkg-ref id="com.custom-tools.screenshot-watcher" version="1.0">screenshot-watcher.pkg</pkg-ref>
-    <pkg-ref id="com.custom-tools.cat-detector" version="1.0">cat-detector.pkg</pkg-ref>
-    <pkg-ref id="com.custom-tools.coffee-refiller" version="1.0">coffee-refiller.pkg</pkg-ref>
-    <pkg-ref id="com.custom-tools.snack-scheduler" version="1.0">snack-scheduler.pkg</pkg-ref>
+    <pkg-ref id="com.custom-tools.core" version="$VERSION">core.pkg</pkg-ref>
+    <pkg-ref id="com.custom-tools.screenshot-watcher" version="$VERSION">screenshot-watcher.pkg</pkg-ref>
+    <pkg-ref id="com.custom-tools.cat-detector" version="$VERSION">cat-detector.pkg</pkg-ref>
+    <pkg-ref id="com.custom-tools.coffee-refiller" version="$VERSION">coffee-refiller.pkg</pkg-ref>
+    <pkg-ref id="com.custom-tools.snack-scheduler" version="$VERSION">snack-scheduler.pkg</pkg-ref>
 </installer-gui-script>
 DISTXML
 
@@ -603,8 +626,7 @@ cat > "$BUILDDIR/resources/welcome.html" << 'WELCOME'
     <p>On the next screen, select which tools to install.</p>
 
     <div class="note">
-        <strong>Note:</strong> The menu bar app is pre-compiled as a universal binary (Apple Silicon + Intel).
-        Screen-shot Manager requires <code>fswatch</code> &mdash; install it with <code>brew install fswatch</code>.<br><br>
+        <strong>Note:</strong> The menu bar app is pre-compiled as a universal binary (Apple Silicon + Intel). Everything is self-contained &mdash; no additional dependencies required.<br><br>
         <strong>To uninstall:</strong> Run <code>bash ~/.local/bin/uninstall-tool-manager.sh</code>
     </div>
 </body>

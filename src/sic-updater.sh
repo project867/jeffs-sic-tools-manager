@@ -106,23 +106,26 @@ set_installed_version() {
 }
 
 # --- Fetch releases from GitHub (single API call) ---
+# Writes response to a temp file and prints the file path
 fetch_releases() {
-    local response
-    local curl_args=(-s --max-time 30 -H "Accept: application/vnd.github+json")
+    local tmp_file="${TMPDIR:-/tmp}/sic-releases-$$.json"
+    local curl_args=(-s --max-time 30 -H "Accept: application/vnd.github+json" -o "$tmp_file")
     if [ -n "$AUTH_HEADER" ]; then
         curl_args+=(-H "$AUTH_HEADER")
     fi
-    response=$(curl "${curl_args[@]}" "$GITHUB_API" 2>/dev/null) || {
+    curl "${curl_args[@]}" "$GITHUB_API" 2>/dev/null || {
         log "ERROR: Failed to fetch releases from GitHub"
+        rm -f "$tmp_file"
         return 1
     }
 
-    if ! echo "$response" | grep -q '"tag_name"'; then
+    if ! grep -q '"tag_name"' "$tmp_file" 2>/dev/null; then
         log "ERROR: Invalid response from GitHub API"
+        rm -f "$tmp_file"
         return 1
     fi
 
-    echo "$response"
+    echo "$tmp_file"
 }
 
 # --- Extract latest version for a component tag prefix ---
@@ -130,7 +133,7 @@ get_latest_version() {
     local tag_prefix="$1"
     local releases="$2"
 
-    echo "$releases" | grep -o "\"tag_name\": *\"${tag_prefix}-v[^\"]*\"" \
+    cat "$releases" | grep -o "\"tag_name\": *\"${tag_prefix}-v[^\"]*\"" \
         | head -1 \
         | sed "s/.*${tag_prefix}-v\([^\"]*\)\".*/\1/"
 }
@@ -140,7 +143,7 @@ get_asset_urls() {
     local tag="$1"
     local releases="$2"
 
-    echo "$releases" | awk -v tag="$tag" '
+    cat "$releases" | awk -v tag="$tag" '
         /"tag_name"/ { found = ($0 ~ "\"" tag "\"") }
         found && /"browser_download_url"/ { print }
         found && /^\s*\]/ && !/^\s*\[/ { if (found) exit }
@@ -238,7 +241,9 @@ apply_core_update() {
     local tmp_dir
     tmp_dir=$(mktemp -d)
 
-    log "Updating core to $new_version..."
+    local current_version
+    current_version=$(get_installed_version "core")
+    log "Updating core from $current_version to $new_version..."
 
     # Download manifest first
     local manifest_file=""
@@ -302,6 +307,9 @@ apply_core_update() {
         chmod +x "$BIN_DIR/sic-updater.sh"
     fi
 
+    # Write version BEFORE relaunch so the new app reads the correct version
+    set_installed_version "core" "$new_version"
+
     # Relaunch the menu bar app
     open "$BIN_DIR/ToolManager.app"
 
@@ -309,6 +317,7 @@ apply_core_update() {
     sleep 3
     if ! pgrep -x ToolManager >/dev/null; then
         log "WARNING: ToolManager failed to start after update — rolling back..."
+        set_installed_version "core" "$current_version"
         cp "$BACKUP_DIR/core/ToolManager" "$BIN_DIR/ToolManager.app/Contents/MacOS/ToolManager" 2>/dev/null || true
         chmod +x "$BIN_DIR/ToolManager.app/Contents/MacOS/ToolManager"
         cp "$BACKUP_DIR/core/tool-manager.sh" "$BIN_DIR/tool-manager.sh" 2>/dev/null || true
@@ -318,8 +327,6 @@ apply_core_update() {
         rm -rf "$tmp_dir"
         return 1
     fi
-
-    set_installed_version "core" "$new_version"
     log "Core updated to $new_version successfully"
     rm -rf "$tmp_dir"
 }
@@ -338,12 +345,13 @@ apply_tool_update() {
 
     log "Updating $update_tag to $new_version..."
 
-    # Parse current manifest for SCRIPT, LABEL, PLIST
-    local script_path="" label="" plist_path=""
+    # Parse current manifest for SCRIPT, BINARY, LABEL, PLIST
+    local script_path="" binary_path="" label="" plist_path=""
     while IFS='=' read -r key val; do
         val="${val#"${val%%[![:space:]]*}"}"
         case "$key" in
             SCRIPT) script_path="$(eval echo "$val")" ;;
+            BINARY) binary_path="$(eval echo "$val")" ;;
             LABEL) label="$val" ;;
             PLIST) plist_path="$(eval echo "$val")" ;;
         esac
@@ -366,6 +374,24 @@ apply_tool_update() {
         }
     fi
 
+    # Download new binary (if tool has one)
+    local new_binary=""
+    if [ -n "$binary_path" ]; then
+        local binary_name
+        binary_name=$(basename "$binary_path")
+        new_binary=$(download_verified_asset "$binary_name" "$tag" "$releases" "$tmp_dir" "$release_manifest") || {
+            log "ERROR: Failed to download $binary_name"
+            rm -rf "$tmp_dir"
+            return 1
+        }
+        # Verify it's a valid Mach-O
+        if ! file "$new_binary" | grep -q "Mach-O"; then
+            log "ERROR: Downloaded binary $binary_name is not a valid Mach-O file"
+            rm -rf "$tmp_dir"
+            return 1
+        fi
+    fi
+
     # Download new tool manifest
     local new_manifest
     new_manifest=$(download_verified_asset "${tool_name}.tool" "$tag" "$releases" "$tmp_dir" "$release_manifest") || {
@@ -377,6 +403,7 @@ apply_tool_update() {
     # Backup current files
     mkdir -p "$BACKUP_DIR/tools"
     [ -n "$script_path" ] && [ -f "$script_path" ] && cp "$script_path" "$BACKUP_DIR/tools/"
+    [ -n "$binary_path" ] && [ -f "$binary_path" ] && cp "$binary_path" "$BACKUP_DIR/tools/"
     cp "$manifest_file_path" "$BACKUP_DIR/tools/"
 
     # Check if tool is running, stop if so
@@ -391,6 +418,10 @@ apply_tool_update() {
     if [ -n "$new_script" ] && [ -n "$script_path" ]; then
         cp "$new_script" "$script_path"
         chmod +x "$script_path"
+    fi
+    if [ -n "$new_binary" ] && [ -n "$binary_path" ]; then
+        cp "$new_binary" "$binary_path"
+        chmod +x "$binary_path"
     fi
     cp "$new_manifest" "$manifest_file_path"
 
@@ -506,6 +537,9 @@ main() {
         fi
         log "No updates available."
     fi
+
+    # Clean up temp releases file
+    rm -f "$releases"
 
     log "--- Update check finished ---"
 }

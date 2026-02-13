@@ -8,7 +8,7 @@ SCREEN_BOUNDS=$(/usr/bin/osascript -e 'tell application "Finder" to get bounds o
 SCREEN_W=$(echo "$SCREEN_BOUNDS" | awk -F', ' '{print $3}')
 SCREEN_H=$(echo "$SCREEN_BOUNDS" | awk -F', ' '{print $4}')
 
-/opt/homebrew/bin/fswatch -0 --latency 0.01 --event Created --event Renamed "$WATCH_DIR" | while IFS= read -r -d '' filepath; do
+"$HOME/.local/bin/sic-watcher" -0 "$WATCH_DIR" | while IFS= read -r -d '' filepath; do
     filename=$(basename "$filepath")
     case "$filename" in .*) continue ;; esac
     case "$filename" in *.png|*.jpg|*.jpeg|*.tiff|*.bmp|*.gif) ;; *) continue ;; esac

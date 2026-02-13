@@ -145,7 +145,7 @@ class ToolManagerApp: NSObject, NSApplicationDelegate {
     }
 
     @objc func showPanel() {
-        if panel.isVisible { panel.orderOut(nil); return }
+        if panel.isVisible && panel.isKeyWindow { panel.orderOut(nil); return }
         uninstallMode = false
         build()
         guard let bf = statusItem.button?.window?.frame else { return }
@@ -168,7 +168,8 @@ class ToolManagerApp: NSObject, NSApplicationDelegate {
             masterEnabled = runStates.contains(true) || tools.isEmpty
         }
 
-        let h: CGFloat = 12 + 32 + 8 + CGFloat(max(tools.count, 1)) * 44 + 8 + 28 + 8
+        let toolRows: CGFloat = CGFloat(max(tools.count, 1)) * 44
+        let h: CGFloat = 12 + 32 + 8 + toolRows + 8 + 28 + 8 + 18
         cv.frame = NSRect(x: 0, y: 0, width: W, height: h)
         panel.setContentSize(NSSize(width: W, height: h))
         var y = h
@@ -217,9 +218,9 @@ class ToolManagerApp: NSObject, NSApplicationDelegate {
         } else {
             // Normal mode — master toggle + tool toggles
             y -= 32 + 8
-            let ml = NSTextField(labelWithString: "All Tools")
+            let ml = NSTextField(labelWithString: "Jeff's Sic Tools Manager")
             ml.font = .boldSystemFont(ofSize: 14)
-            ml.frame = NSRect(x: 14, y: y + 6, width: 120, height: 20)
+            ml.frame = NSRect(x: 14, y: y + 6, width: 220, height: 20)
             cv.addSubview(ml)
 
             masterToggle = ToggleSwitch(isOn: masterEnabled, frame: NSRect(x: W - 62, y: y + 5, width: 46, height: 24))
@@ -308,7 +309,40 @@ class ToolManagerApp: NSObject, NSApplicationDelegate {
         qb.frame = NSRect(x: gap * 3 + bw * 2, y: y + 4, width: bw, height: 20)
         cv.addSubview(qb)
 
+        // Version + auto-update toggle row at bottom
+        let versionStr = readCoreVersion()
+        let vl = NSTextField(labelWithString: versionStr)
+        vl.font = .systemFont(ofSize: 11)
+        vl.textColor = .secondaryLabelColor
+        vl.frame = NSRect(x: 14, y: 2, width: 80, height: 16)
+        cv.addSubview(vl)
+
+        let autoLabel = NSTextField(labelWithString: "Auto-update")
+        autoLabel.font = .systemFont(ofSize: 11)
+        autoLabel.textColor = .secondaryLabelColor
+        autoLabel.frame = NSRect(x: W - 130, y: 2, width: 80, height: 16)
+        cv.addSubview(autoLabel)
+
+        let updaterRunning = isRunning(label: "com.custom-tools.updater")
+        let autoToggle = ToggleSwitch(isOn: updaterRunning, frame: NSRect(x: W - 52, y: 1, width: 40, height: 20))
+        autoToggle.target = self
+        autoToggle.action = #selector(autoUpdateToggled(_:))
+        cv.addSubview(autoToggle)
+
         panel.contentView = cv
+    }
+
+    func readCoreVersion() -> String {
+        let path = NSHomeDirectory() + "/.local/sic-versions"
+        guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else { return "" }
+        for line in contents.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("core=") {
+                let ver = String(trimmed.dropFirst(5))
+                return "v" + ver
+            }
+        }
+        return ""
     }
 
     func makeSpinner(x: CGFloat, y: CGFloat) -> NSProgressIndicator {
@@ -377,6 +411,15 @@ class ToolManagerApp: NSObject, NSApplicationDelegate {
                 self.masterSpinner.stopAnimation(nil)
                 self.masterToggle.isEnabled = true
             }
+        }
+    }
+
+    @objc func autoUpdateToggled(_ sender: ToggleSwitch) {
+        let plist = NSHomeDirectory() + "/Library/LaunchAgents/com.custom-tools.updater.plist"
+        if sender.isOn {
+            launchctl(["load", plist])
+        } else {
+            launchctl(["unload", plist])
         }
     }
 
