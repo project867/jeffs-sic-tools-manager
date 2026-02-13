@@ -392,6 +392,10 @@ mkdir -p "$REAL_HOME/Desktop/Screenshots"
 mkdir -p "$REAL_HOME/Library/LaunchAgents"
 mkdir -p "$REAL_HOME/Library/Logs"
 
+# Set macOS screenshot save location to ~/Desktop/Screenshots
+su "$REAL_USER" -c "defaults write com.apple.screencapture location '$REAL_HOME/Desktop/Screenshots'"
+chown -R "$REAL_USER" "$REAL_HOME/Desktop/Screenshots"
+
 WATCHER_HEADER
 
 cat >> "$BUILDDIR/watcher-scripts/postinstall" << WATCHER_DATA

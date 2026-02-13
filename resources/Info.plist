@@ -15,5 +15,7 @@
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Jeff's Sic Tools Manager needs to control Finder and Terminal to manage your tools.</string>
 </dict>
 </plist>
